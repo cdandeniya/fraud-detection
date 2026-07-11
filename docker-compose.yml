@@ -1,0 +1,16 @@
+# Just Postgres for now. Stage 3 adds Kafka and Redis here too.
+services:
+  db:
+    image: postgres:16
+    container_name: fraud-postgres
+    environment:
+      POSTGRES_DB: fraud
+      POSTGRES_USER: fraud
+      POSTGRES_PASSWORD: fraud
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
