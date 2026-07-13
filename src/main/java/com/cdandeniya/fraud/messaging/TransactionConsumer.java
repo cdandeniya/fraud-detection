@@ -9,6 +9,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.support.KafkaHeaders;
+import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
 
 /**
@@ -16,8 +18,8 @@ import org.springframework.stereotype.Component;
  * the same ScoringService the REST endpoint uses, and if it's not a clean APPROVE,
  * publish an alert to the "fraud-alerts" topic for whoever is downstream.
  *
- * Scoring stays free of Kafka - the consumer is the only thing that knows about topics,
- * so the rules and the service don't get coupled to the transport.
+ * The concurrency is configurable, and every record logs the partition it came from -
+ * that's how you can watch the load spread across a consumer group in Stage 4.
  */
 @Component
 public class TransactionConsumer {
@@ -36,8 +38,22 @@ public class TransactionConsumer {
         this.alertsTopic = alertsTopic;
     }
 
-    @KafkaListener(topics = "${fraud.kafka.topics.transactions}", groupId = "${spring.kafka.consumer.group-id}")
-    public void onMessage(TransactionMessage message) {
+    @KafkaListener(
+            topics = "${fraud.kafka.topics.transactions}",
+            groupId = "${spring.kafka.consumer.group-id}",
+            concurrency = "${fraud.kafka.concurrency:1}")
+    public void onMessage(TransactionMessage message,
+                          @Header(KafkaHeaders.RECEIVED_PARTITION) int partition,
+                          @Header(KafkaHeaders.OFFSET) long offset) {
+        log.debug("card {} -> partition {} offset {}", message.getCardId(), partition, offset);
+        handle(message);
+    }
+
+    /**
+     * The actual work, split out from the Kafka plumbing so it can be unit-tested
+     * without a broker.
+     */
+    void handle(TransactionMessage message) {
         TransactionRequest request = new TransactionRequest();
         request.setCardId(message.getCardId());
         request.setAmount(message.getAmount());

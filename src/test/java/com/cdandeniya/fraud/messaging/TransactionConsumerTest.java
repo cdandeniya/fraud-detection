@@ -44,7 +44,7 @@ class TransactionConsumerTest {
         when(scoringService.score(any(TransactionRequest.class)))
                 .thenReturn(new DecisionResponse(1L, Verdict.APPROVE, 0, List.of("no rules triggered")));
 
-        consumer.onMessage(message());
+        consumer.handle(message());
 
         verify(kafkaTemplate, never()).send(any(), any(), any());
     }
@@ -54,7 +54,7 @@ class TransactionConsumerTest {
         when(scoringService.score(any(TransactionRequest.class)))
                 .thenReturn(new DecisionResponse(1L, Verdict.DECLINE, 85, List.of("high amount", "new country")));
 
-        consumer.onMessage(message());
+        consumer.handle(message());
 
         verify(kafkaTemplate).send(eq("fraud-alerts"), eq("card-1"), any(AlertMessage.class));
     }
