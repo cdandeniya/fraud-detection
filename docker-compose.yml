@@ -1,4 +1,9 @@
-# Postgres + Redis + Kafka. Everything the pipeline needs to run locally.
+# Postgres + Redis + Kafka, plus the app itself as a scalable "scorer" service and a
+# single "producer" that feeds the stream.
+#
+#   docker compose up --build --scale scorer=3
+#
+# Three scorers join one consumer group and Kafka hands each of them one partition.
 services:
   db:
     image: postgres:16
@@ -26,15 +31,38 @@ services:
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      # INTERNAL is used by services inside the compose network (kafka:29092),
+      # EXTERNAL is used from the host machine (localhost:9092)
+      KAFKA_LISTENERS: CONTROLLER://:9093,INTERNAL://:29092,EXTERNAL://:9092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+
+  scorer:
+    build: .
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    depends_on:
+      - db
+      - redis
+      - kafka
+
+  producer:
+    build: .
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      FRAUD_SIMULATOR_ENABLED: "true"
+      SPRING_KAFKA_LISTENER_AUTO_STARTUP: "false"
+    depends_on:
+      - db
+      - redis
+      - kafka
 
 volumes:
   pgdata:
