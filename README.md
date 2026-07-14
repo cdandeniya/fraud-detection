@@ -1,13 +1,15 @@
 # Fraud Detection Pipeline
 
 A real-time system that scores payment transactions for fraud as they stream in. Built in
-Java/Spring Boot with Kafka, Redis, Postgres, and an ML model, scaled out horizontally.
+Java/Spring Boot with Kafka, Redis, Postgres, and an ML model, scaled out horizontally and
+instrumented with metrics.
 
-![status](https://img.shields.io/badge/status-stage%205%20done-brightgreen)
+![status](https://img.shields.io/badge/status-stage%206%20done-brightgreen)
 ![java](https://img.shields.io/badge/Java-17-orange)
 ![spring](https://img.shields.io/badge/Spring%20Boot-3-green)
 ![kafka](https://img.shields.io/badge/Apache%20Kafka-streaming-black)
 ![ml](https://img.shields.io/badge/ML-logistic%20regression-blue)
+![metrics](https://img.shields.io/badge/metrics-Prometheus-e6522c)
 ![license](https://img.shields.io/badge/license-MIT-blue)
 
 > Heads up: this is an active learning project I'm building in stages, not a finished product.
@@ -20,60 +22,62 @@ Java/Spring Boot with Kafka, Redis, Postgres, and an ML model, scaled out horizo
 Transactions stream in through Kafka. Multiple scoring instances share the load, running each
 one through a rules engine *and* a machine-learning model, using recent per-card behavior
 cached in Redis. Out comes a decision: **APPROVE**, **REVIEW**, or **DECLINE**, plus the reasons
-why. Every transaction and its decision are written to Postgres, and anything flagged is
-published to a separate alerts topic.
+why. Every transaction and its decision are written to Postgres, anything flagged is published
+to an alerts topic, and the whole thing is instrumented so you can watch throughput and latency
+live.
 
 The interesting part isn't the fraud rules themselves — it's making this *fast, scalable, and
 reliable at the same time*, which is where all the system-design stuff comes in.
 
-## Architecture (Stage 5)
+## Architecture (Stage 6)
 
 ```
                          ┌──▶  scorer #1 ─┐   rules + ML model
  producer ─▶ Kafka ──────┼──▶  scorer #2 ─┼──────────┬────────▶  Postgres (txn + decision)
-            transactions │    (consumer   │          │
-            (3 partitions)     group)     │          ├──▶ Redis (velocity features)
-                         └──▶  scorer #3 ─┘          ├──▶ model service (Python, /predict)
-                                                     └──▶ Kafka: fraud-alerts ─▶ downstream
+            transactions │    (consumer   │          ├──▶ Redis (velocity features)
+            (3 partitions)     group)     │          ├──▶ model service (Python, /predict)
+                         └──▶  scorer #3 ─┘          └──▶ Kafka: fraud-alerts ─▶ downstream
+                                   │
+                                   └──▶ /actuator/prometheus  ─▶ Prometheus
+                                        /stats  ─▶ live dashboard
 ```
 
-Four checks run on every transaction and add up to one risk score:
-- **High amount** — over a configurable threshold (default $1000).
-- **New country** — a card used somewhere it's never been seen before.
-- **Velocity** — too many transactions in a short window, counted from Redis.
-- **Model** — a logistic-regression model scores the transaction's features and contributes
-  if its fraud probability crosses a threshold.
+Four checks add up to one risk score per transaction: **high amount**, **new country**,
+**velocity** (from Redis), and the **model**.
 
-### Why a separate model service?
+## Observability
 
-The model is a small **Python** service (`/model`) that the Java scorer calls over HTTP. That
-keeps a clean language boundary — Python owns training and serving, Java owns the pipeline —
-at the cost of a network hop per transaction. So the client **fails open**: if the model
-service is slow or down, scoring falls back to the rules alone instead of taking the whole
-pipeline down with it. Rules catch the obvious cases; the model catches subtler patterns; both
-feed the same score.
+Every scoring decision updates metrics via Micrometer:
+- `fraud_decisions_total{verdict=...}` — how many APPROVE / REVIEW / DECLINE
+- `fraud_scoring_latency_seconds` — how long scoring takes (with p50/p95/p99)
 
-The model trains on synthetic labeled data (`model/train.py`) so the repo is self-contained;
-the plan is to swap in the Kaggle credit-card fraud dataset later.
+They're exposed at `/actuator/prometheus` (Prometheus scrapes them) and summarized on a small
+live dashboard at `http://localhost:8080/` that polls `/stats` once a second.
+
+### Load test
+
+`loadtest/loadtest.py` (standard library only) fires a burst of requests at `/score` and
+reports throughput and latency percentiles — the numbers that go on the resume:
+
+```bash
+python3 loadtest/loadtest.py --requests 5000 --concurrency 50
+```
 
 ## Getting started
 
 You need JDK 17 and Docker.
 
-### Everything in Docker, scaled out
+```bash
+# infra + model + prometheus
+docker compose up -d db redis kafka model prometheus
+# run the app (dashboard at http://localhost:8080/)
+./mvnw spring-boot:run
+```
+
+Or run everything containerized and scaled out:
 
 ```bash
 docker compose up --build --scale scorer=3
-```
-
-Starts Postgres, Redis, Kafka, the Python model service, one producer, and three scorer
-instances in a consumer group.
-
-### Dev — infra in Docker, app from your IDE
-
-```bash
-docker compose up -d db redis kafka model    # infra + model service
-./mvnw spring-boot:run                         # the app
 ```
 
 Watch the alerts topic:
@@ -83,7 +87,7 @@ docker exec -it fraud-kafka /opt/kafka/bin/kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 --topic fraud-alerts --from-beginning
 ```
 
-Run the tests with `mvn test` — they mock Kafka, Redis, and the model, and use in-memory H2,
+Run the tests with `mvn test` — they mock Kafka, Redis, and the model and use in-memory H2,
 so no infra is needed.
 
 ## Tech stack
@@ -96,6 +100,7 @@ so no infra is needed.
 | Feature store / cache | Redis | Fast rolling per-card velocity counts, TTL cleans up old data |
 | Database | PostgreSQL | Stores every transaction and its decision |
 | ML | Python, scikit-learn, FastAPI | Trains + serves a fraud model behind a small HTTP service |
+| Metrics | Micrometer + Prometheus | Throughput + latency, scraped and shown on a live dashboard |
 | Packaging | Docker + Compose | One command to run and scale the whole thing |
 | Testing | JUnit 5 + Mockito + H2 | Unit-test the logic with no infra running |
 
@@ -110,7 +115,7 @@ Each stage adds a single idea so I actually understand *why* it's there. Full de
 - [x] **Stage 3 — Async:** Kafka producer + consumer, decouple ingest from scoring
 - [x] **Stage 4 — Scale:** multiple consumers in a group, partitioned by card
 - [x] **Stage 5 — ML:** train + serve a fraud model alongside the rules
-- [ ] **Stage 6 — Observability:** metrics, live dashboard, load testing
+- [x] **Stage 6 — Observability:** metrics, live dashboard, load testing
 - [ ] **Stage 7 — Polish:** CI, docker-compose everything, write-up
 
 ## What I'm learning
@@ -121,11 +126,13 @@ I'm using this as the hands-on companion to the system design I'm studying:
 - **Async / queues** → Kafka between producer and scorer (Stage 3) ✅
 - **Horizontal scaling & load balancing** → Kafka consumer groups + partitioning (Stage 4) ✅
 - **Service boundaries & resilience** → the model service + fail-open client (Stage 5) ✅
+- **Latency vs. throughput** → metrics + load testing, measure before optimizing (Stage 6) ✅
 - **Consistency vs. availability** → what I do when a piece goes down (Stage 7)
 
 If you're a recruiter or hiring manager reading this: the short version is that it's a
 real-time, event-driven transaction scoring service with an ML model, that scales
-horizontally, and I can walk through every design decision in it. Thanks for stopping by.
+horizontally and is fully instrumented, and I can walk through every design decision in it.
+Thanks for stopping by.
 
 ## Notes
 
