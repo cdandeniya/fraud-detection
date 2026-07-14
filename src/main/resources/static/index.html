@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fraud Detection — Live</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; background: #0f1720; color: #e6edf3; }
+    header { padding: 20px 28px; border-bottom: 1px solid #22303c; }
+    h1 { margin: 0; font-size: 20px; }
+    .sub { color: #8b98a5; font-size: 13px; margin-top: 4px; }
+    .cards { display: flex; gap: 16px; padding: 24px 28px; flex-wrap: wrap; }
+    .card { background: #16212b; border: 1px solid #22303c; border-radius: 10px; padding: 18px 22px; min-width: 130px; }
+    .card .label { font-size: 12px; color: #8b98a5; text-transform: uppercase; letter-spacing: .04em; }
+    .card .value { font-size: 30px; font-weight: 700; margin-top: 6px; }
+    .approve { color: #3fb950; } .review { color: #d29922; } .decline { color: #f85149; }
+    .chart-wrap { max-width: 360px; padding: 0 28px 28px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Fraud Detection Pipeline — live</h1>
+    <div class="sub">polling <code>/stats</code> every second</div>
+  </header>
+  <div class="cards">
+    <div class="card"><div class="label">Total scored</div><div class="value" id="total">0</div></div>
+    <div class="card"><div class="label">Approve</div><div class="value approve" id="approve">0</div></div>
+    <div class="card"><div class="label">Review</div><div class="value review" id="review">0</div></div>
+    <div class="card"><div class="label">Decline</div><div class="value decline" id="decline">0</div></div>
+    <div class="card"><div class="label">Mean latency</div><div class="value" id="latency">0 ms</div></div>
+  </div>
+  <div class="chart-wrap"><canvas id="chart"></canvas></div>
+
+  <script>
+    const chart = new Chart(document.getElementById('chart'), {
+      type: 'doughnut',
+      data: {
+        labels: ['Approve', 'Review', 'Decline'],
+        datasets: [{ data: [0, 0, 0], backgroundColor: ['#3fb950', '#d29922', '#f85149'] }]
+      },
+      options: { plugins: { legend: { labels: { color: '#e6edf3' } } } }
+    });
+
+    async function refresh() {
+      try {
+        const s = await (await fetch('/stats')).json();
+        document.getElementById('total').textContent = s.total;
+        document.getElementById('approve').textContent = s.approve;
+        document.getElementById('review').textContent = s.review;
+        document.getElementById('decline').textContent = s.decline;
+        document.getElementById('latency').textContent = s.meanLatencyMs.toFixed(2) + ' ms';
+        chart.data.datasets[0].data = [s.approve, s.review, s.decline];
+        chart.update();
+      } catch (e) { /* app not up yet */ }
+    }
+    refresh();
+    setInterval(refresh, 1000);
+  </script>
+</body>
+</html>
