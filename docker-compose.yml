@@ -44,6 +44,12 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
 
+  model:
+    build: ./model
+    container_name: fraud-model
+    ports:
+      - "8000:8000"
+
   scorer:
     build: .
     environment:
@@ -52,6 +58,7 @@ services:
       - db
       - redis
       - kafka
+      - model
 
   producer:
     build: .
