@@ -71,5 +71,13 @@ services:
       - redis
       - kafka
 
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: fraud-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./ops/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
 volumes:
   pgdata:
