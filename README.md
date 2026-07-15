@@ -71,7 +71,7 @@ You need JDK 17 and Docker.
 # infra + model + prometheus
 docker compose up -d db redis kafka model prometheus
 # run the app (dashboard at http://localhost:8080/)
-./mvnw spring-boot:run
+mvn spring-boot:run
 ```
 
 Or run everything containerized and scaled out:

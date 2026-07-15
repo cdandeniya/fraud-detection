@@ -39,33 +39,33 @@ transaction + decision get stored in Postgres. Rules are pluggable `@Component`s
 Concept: the vertical baseline — one machine doing everything, and where it falls over
 (it blocks on every DB call).
 
-### Stage 2 — Feature store + caching (Redis)
+### Stage 2 — Feature store + caching (Redis)  ✅
 Move "recent behavior" features into Redis: rolling per-card counters (txns in the last
 1/5/60 min). Read those instead of a `COUNT(*)` every time.
 Concept: caching — why cache computed features not raw queries, and TTLs as a natural fit for
 time-windowed features.
 
-### Stage 3 — Decouple with Kafka (async)
+### Stage 3 — Decouple with Kafka (async)  ✅
 A producer/simulator publishes transactions to a Kafka topic; the scoring service becomes a
 consumer, writes decisions, and publishes flagged ones to a `fraud-alerts` topic.
 Concept: asynchronism and queues — buffering spikes, back-pressure, at-least-once delivery.
 
-### Stage 4 — Scale it out
+### Stage 4 — Scale it out  ✅
 Run multiple scoring instances in one consumer group, partition the topic by `cardId` so a
 card's traffic lands on the same consumer (keeps Redis counters consistent).
 Concept: horizontal scaling and load balancing; partition key choice.
 
-### Stage 5 — Add the ML model
+### Stage 5 — Add the ML model  ✅
 Train a model offline in Python (logistic regression, then XGBoost) on a public dataset,
 export it, and serve it alongside the rules. Compare catch rates.
 Concept: service boundaries and the trade-off of a network hop vs. embedding the model.
 
-### Stage 6 — Observability + dashboard + load test
+### Stage 6 — Observability + dashboard + load test  ✅
 Metrics (Micrometer -> Prometheus): throughput, p95 latency, decisions/sec. A small live
 dashboard. Load test it and find where it slows down.
 Concept: latency vs. throughput, measure before optimizing.
 
-### Stage 7 — Polish for recruiters
+### Stage 7 — Polish for recruiters  ✅
 `docker compose up` for the whole thing, tests, CI badge, clean README, resume bullets with
 real numbers from the load test.
 Concept: consistency vs. availability (CAP) — write up the trade-offs I chose.
@@ -78,6 +78,11 @@ Concept: consistency vs. availability (CAP) — write up the trade-offs I chose.
   in parallel with at-least-once processing.
 - Combined a rules engine with an XGBoost model catching X% of fraud at p95 latency of X ms,
   reproducible via a single `docker compose up`.
+
+## Where the trade-offs are written up
+
+The full design write-up - failure modes, consistency vs. availability, delivery semantics,
+and what I'd fix next - lives in [`DESIGN.md`](DESIGN.md).
 
 ## Guardrails so I actually understand it
 - After each stage I write a few sentences on *why*, not just what.
