@@ -4,7 +4,8 @@ A real-time system that scores payment transactions for fraud as they stream in.
 Java/Spring Boot with Kafka, Redis, Postgres, and an ML model, scaled out horizontally and
 instrumented with metrics.
 
-![status](https://img.shields.io/badge/status-stage%206%20done-brightgreen)
+[![CI](https://github.com/cdandeniya/fraud-detection/actions/workflows/ci.yml/badge.svg)](https://github.com/cdandeniya/fraud-detection/actions/workflows/ci.yml)
+![status](https://img.shields.io/badge/all%20stages-complete-brightgreen)
 ![java](https://img.shields.io/badge/Java-17-orange)
 ![spring](https://img.shields.io/badge/Spring%20Boot-3-green)
 ![kafka](https://img.shields.io/badge/Apache%20Kafka-streaming-black)
@@ -63,6 +64,12 @@ reports throughput and latency percentiles — the numbers that go on the resume
 python3 loadtest/loadtest.py --requests 5000 --concurrency 50
 ```
 
+## Design notes
+
+The full write-up of the trade-offs — why there's a queue in the middle, why partition by card,
+what happens when each piece goes down, and what I'd fix next — is in [`DESIGN.md`](DESIGN.md).
+That's the doc to read if you want the reasoning rather than the code.
+
 ## Getting started
 
 You need JDK 17 and Docker.
@@ -116,7 +123,7 @@ Each stage adds a single idea so I actually understand *why* it's there. Full de
 - [x] **Stage 4 — Scale:** multiple consumers in a group, partitioned by card
 - [x] **Stage 5 — ML:** train + serve a fraud model alongside the rules
 - [x] **Stage 6 — Observability:** metrics, live dashboard, load testing
-- [ ] **Stage 7 — Polish:** CI, docker-compose everything, write-up
+- [x] **Stage 7 — Polish:** CI, license, design write-up
 
 ## What I'm learning
 
@@ -127,7 +134,7 @@ I'm using this as the hands-on companion to the system design I'm studying:
 - **Horizontal scaling & load balancing** → Kafka consumer groups + partitioning (Stage 4) ✅
 - **Service boundaries & resilience** → the model service + fail-open client (Stage 5) ✅
 - **Latency vs. throughput** → metrics + load testing, measure before optimizing (Stage 6) ✅
-- **Consistency vs. availability** → what I do when a piece goes down (Stage 7)
+- **Consistency vs. availability** → what I do when a piece goes down (Stage 7) ✅ — written up in [`DESIGN.md`](DESIGN.md)
 
 If you're a recruiter or hiring manager reading this: the short version is that it's a
 real-time, event-driven transaction scoring service with an ML model, that scales
