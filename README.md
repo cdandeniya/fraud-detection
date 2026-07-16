@@ -1,151 +1,232 @@
-# Fraud Detection Pipeline
+<h1 align="center">Fraud Detection Pipeline</h1>
 
-A real-time system that scores payment transactions for fraud as they stream in. Built in
-Java/Spring Boot with Kafka, Redis, Postgres, and an ML model, scaled out horizontally and
-instrumented with metrics.
+<p align="center">
+  <b>A real-time, event-driven system that scores payment transactions for fraud — built to scale horizontally.</b><br>
+  Java · Spring Boot · Apache Kafka · Redis · PostgreSQL · Python (scikit-learn) · Docker
+</p>
 
-[![CI](https://github.com/cdandeniya/fraud-detection/actions/workflows/ci.yml/badge.svg)](https://github.com/cdandeniya/fraud-detection/actions/workflows/ci.yml)
-![status](https://img.shields.io/badge/all%20stages-complete-brightgreen)
-![java](https://img.shields.io/badge/Java-17-orange)
-![spring](https://img.shields.io/badge/Spring%20Boot-3-green)
-![kafka](https://img.shields.io/badge/Apache%20Kafka-streaming-black)
-![ml](https://img.shields.io/badge/ML-logistic%20regression-blue)
-![metrics](https://img.shields.io/badge/metrics-Prometheus-e6522c)
-![license](https://img.shields.io/badge/license-MIT-blue)
+<p align="center">
+  <a href="https://github.com/cdandeniya/fraud-detection/actions/workflows/ci.yml"><img src="https://github.com/cdandeniya/fraud-detection/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <img src="https://img.shields.io/badge/Java-17-orange" alt="Java 17">
+  <img src="https://img.shields.io/badge/Spring%20Boot-3.2-6DB33F" alt="Spring Boot 3.2">
+  <img src="https://img.shields.io/badge/Apache%20Kafka-streaming-231F20" alt="Kafka">
+  <img src="https://img.shields.io/badge/Redis-feature%20store-DC382D" alt="Redis">
+  <img src="https://img.shields.io/badge/PostgreSQL-storage-4169E1" alt="PostgreSQL">
+  <img src="https://img.shields.io/badge/ML-scikit--learn-F7931E" alt="scikit-learn">
+  <img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT">
+</p>
 
-> Heads up: this is an active learning project I'm building in stages, not a finished product.
-> I'm building it partly to have a real project to point at, and partly to actually learn
-> distributed systems by building one instead of just reading about it. The roadmap below shows
-> what's done and what's next.
+---
 
-## What it does
+## What it is
 
-Transactions stream in through Kafka. Multiple scoring instances share the load, running each
-one through a rules engine *and* a machine-learning model, using recent per-card behavior
-cached in Redis. Out comes a decision: **APPROVE**, **REVIEW**, or **DECLINE**, plus the reasons
-why. Every transaction and its decision are written to Postgres, anything flagged is published
-to an alerts topic, and the whole thing is instrumented so you can watch throughput and latency
-live.
+Payment transactions stream in through Kafka. A pool of scoring services — running as a Kafka
+consumer group so they share the load — puts each transaction through a rules engine **and** a
+machine-learning model, using the card's recent behavior cached in Redis. Each one comes back
+with a decision (**APPROVE**, **REVIEW**, or **DECLINE**) and the reasons behind it. Everything
+is persisted to PostgreSQL, flagged transactions are published to an alerts topic, and the whole
+pipeline is instrumented with Prometheus metrics and a live dashboard.
 
-The interesting part isn't the fraud rules themselves — it's making this *fast, scalable, and
-reliable at the same time*, which is where all the system-design stuff comes in.
+I built this to learn distributed systems by actually building one, rather than just reading
+about them. Every design decision in here is one I can explain — the reasoning is written up in
+**[DESIGN.md](DESIGN.md)**.
 
-## Architecture (Stage 6)
+## Architecture
 
+<p align="center">
+  <img src="docs/architecture.svg" alt="Architecture diagram" width="100%">
+</p>
+
+<!-- Once you've run it, drop a screenshot of the dashboard at docs/dashboard.png and uncomment:
+## Live dashboard
+<p align="center"><img src="docs/dashboard.png" alt="Live dashboard" width="80%"></p>
+-->
+
+## What this project demonstrates
+
+| Engineering concept | Where it shows up here |
+|---|---|
+| **Asynchronous processing / queues** | Kafka sits between ingest and scoring, so traffic spikes become a longer queue instead of dropped requests |
+| **Horizontal scaling & load balancing** | Scorers run in a Kafka consumer group; partitions are split across instances and rebalance automatically when one dies |
+| **Caching strategy** | Redis sorted sets give O(log n) sliding-window velocity counts instead of a `COUNT(*)` on the hot path |
+| **Data partitioning** | Messages keyed by card id, so a card's transactions stay ordered and land on one consumer |
+| **Resilience / graceful degradation** | The ML client *fails open* — if the model service is down, scoring continues on rules alone |
+| **Consistency vs. availability** | Durable decisions favor consistency (Postgres); best-effort signals favor availability (Redis, model) |
+| **Extensible design** | Rules are `@Component`s implementing one interface — adding a check requires no changes to the engine |
+| **Observability** | Micrometer counters + latency percentiles, scraped by Prometheus, shown on a live dashboard |
+| **Testing** | 14 tests that mock Kafka, Redis, and the model — the suite runs with zero infrastructure |
+
+## How one transaction flows
+
+```mermaid
+sequenceDiagram
+    participant P as Producer
+    participant K as Kafka (transactions)
+    participant S as Scorer
+    participant R as Redis
+    participant M as Model service
+    participant DB as PostgreSQL
+    participant A as Kafka (fraud-alerts)
+
+    P->>K: publish transaction (key = cardId)
+    K->>S: consume (partition assigned to this instance)
+    S->>R: recent velocity for this card?
+    R-->>S: 7 transactions in last 5 min
+    S->>M: POST /predict {amount, velocity}
+    M-->>S: fraud probability 0.91
+    Note over S: rules + model → risk score → verdict
+    S->>DB: save transaction + decision
+    S->>R: record this transaction
+    alt verdict is not APPROVE
+        S->>A: publish alert
+    end
 ```
-                         ┌──▶  scorer #1 ─┐   rules + ML model
- producer ─▶ Kafka ──────┼──▶  scorer #2 ─┼──────────┬────────▶  Postgres (txn + decision)
-            transactions │    (consumer   │          ├──▶ Redis (velocity features)
-            (3 partitions)     group)     │          ├──▶ model service (Python, /predict)
-                         └──▶  scorer #3 ─┘          └──▶ Kafka: fraud-alerts ─▶ downstream
-                                   │
-                                   └──▶ /actuator/prometheus  ─▶ Prometheus
-                                        /stats  ─▶ live dashboard
-```
 
-Four checks add up to one risk score per transaction: **high amount**, **new country**,
-**velocity** (from Redis), and the **model**.
+## The checks
 
-## Observability
+Each check contributes points to a risk score. The total maps to a verdict:
+`0` → APPROVE, `1–69` → REVIEW, `70+` → DECLINE.
 
-Every scoring decision updates metrics via Micrometer:
-- `fraud_decisions_total{verdict=...}` — how many APPROVE / REVIEW / DECLINE
-- `fraud_scoring_latency_seconds` — how long scoring takes (with p50/p95/p99)
+| Check | Fires when | Points |
+|---|---|---|
+| **High amount** | Amount exceeds a configurable threshold (default $1,000) | 45 |
+| **New country** | Card used in a country it's never been seen in (new cards exempt) | 40 |
+| **Velocity** | More than N transactions in 5 minutes — the card-testing pattern | 35 |
+| **ML model** | Logistic regression's fraud probability crosses a threshold | up to 50 |
 
-They're exposed at `/actuator/prometheus` (Prometheus scrapes them) and summarized on a small
-live dashboard at `http://localhost:8080/` that polls `/stats` once a second.
+## Quick start
 
-### Load test
-
-`loadtest/loadtest.py` (standard library only) fires a burst of requests at `/score` and
-reports throughput and latency percentiles — the numbers that go on the resume:
+Requires JDK 17 and Docker.
 
 ```bash
-python3 loadtest/loadtest.py --requests 5000 --concurrency 50
-```
-
-## Design notes
-
-The full write-up of the trade-offs — why there's a queue in the middle, why partition by card,
-what happens when each piece goes down, and what I'd fix next — is in [`DESIGN.md`](DESIGN.md).
-That's the doc to read if you want the reasoning rather than the code.
-
-## Getting started
-
-You need JDK 17 and Docker.
-
-```bash
-# infra + model + prometheus
-docker compose up -d db redis kafka model prometheus
-# run the app (dashboard at http://localhost:8080/)
-mvn spring-boot:run
-```
-
-Or run everything containerized and scaled out:
-
-```bash
+# run everything, scaled to three scoring instances
 docker compose up --build --scale scorer=3
 ```
 
-Watch the alerts topic:
+Or run the infrastructure in Docker and the app from your IDE:
+
+```bash
+docker compose up -d db redis kafka model prometheus
+mvn spring-boot:run
+```
+
+Then open **http://localhost:8080/** for the live dashboard.
+
+Score a transaction by hand:
+
+```bash
+curl -X POST http://localhost:8080/score \
+  -H "Content-Type: application/json" \
+  -d '{"cardId":"card-1","amount":5000,"merchant":"Amazon","country":"RU"}'
+```
+
+```json
+{
+  "transactionId": 42,
+  "verdict": "DECLINE",
+  "score": 85,
+  "reasons": [
+    "amount 5000 is over the 1000 threshold",
+    "first time card card-1 has been used in RU"
+  ]
+}
+```
+
+Watch the alerts stream:
 
 ```bash
 docker exec -it fraud-kafka /opt/kafka/bin/kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 --topic fraud-alerts --from-beginning
 ```
 
-Run the tests with `mvn test` — they mock Kafka, Redis, and the model and use in-memory H2,
-so no infra is needed.
+## Benchmarking it
+
+A dependency-free load test ships with the repo — it reports throughput and latency percentiles:
+
+```bash
+python3 loadtest/loadtest.py --requests 5000 --concurrency 50
+```
+
+## Tests
+
+```bash
+mvn test
+```
+
+14 tests covering the rules engine, the velocity and model rules, the Kafka consumer's routing,
+and the metrics. Kafka, Redis, and the model service are all mocked and the database is
+in-memory H2, so the suite needs nothing running.
 
 ## Tech stack
 
-| Piece | What I used | Why |
-|-------|-------------|-----|
-| Language | Java 17 | The language I want to be strong in for backend interviews |
-| Service | Spring Boot 3 | Fast to build REST + Kafka consumers, industry standard |
-| Streaming | Apache Kafka | Decouples ingest, handles spikes, splits load across a consumer group |
-| Feature store / cache | Redis | Fast rolling per-card velocity counts, TTL cleans up old data |
-| Database | PostgreSQL | Stores every transaction and its decision |
-| ML | Python, scikit-learn, FastAPI | Trains + serves a fraud model behind a small HTTP service |
-| Metrics | Micrometer + Prometheus | Throughput + latency, scraped and shown on a live dashboard |
-| Packaging | Docker + Compose | One command to run and scale the whole thing |
-| Testing | JUnit 5 + Mockito + H2 | Unit-test the logic with no infra running |
+| Layer | Technology | Why |
+|---|---|---|
+| Service | Java 17, Spring Boot 3.2 | Strong typing and a mature ecosystem for streaming consumers |
+| Streaming | Apache Kafka | Decouples ingest from scoring; consumer groups give scale-out for free |
+| Cache / features | Redis | Sorted sets make sliding-window counts cheap; TTLs expire old data automatically |
+| Database | PostgreSQL | Durable record of every transaction and decision |
+| ML | Python, scikit-learn, FastAPI | Trains and serves the model behind a clean HTTP boundary |
+| Metrics | Micrometer + Prometheus | Throughput and latency percentiles, scraped and visualized |
+| Infrastructure | Docker Compose | One command brings up and scales the entire system |
+| Testing | JUnit 5, Mockito, H2 | Fast, infrastructure-free test suite |
 
-## Roadmap
+## Design decisions
 
-Each stage adds a single idea so I actually understand *why* it's there. Full detail in
-[`BUILD_PLAN.md`](BUILD_PLAN.md).
+The full write-up is in **[DESIGN.md](DESIGN.md)** — failure modes for every component,
+delivery semantics, and the gaps I'd close next. A few highlights:
 
-- [x] **Stage 0 — Foundations:** repo, README, architecture, domain model
-- [x] **Stage 1 — MVP:** single service, rules engine, Postgres storage
-- [x] **Stage 2 — Caching:** Redis feature store for real-time velocity features
-- [x] **Stage 3 — Async:** Kafka producer + consumer, decouple ingest from scoring
-- [x] **Stage 4 — Scale:** multiple consumers in a group, partitioned by card
-- [x] **Stage 5 — ML:** train + serve a fraud model alongside the rules
-- [x] **Stage 6 — Observability:** metrics, live dashboard, load testing
-- [x] **Stage 7 — Polish:** CI, license, design write-up
+- **Why a queue in the middle?** Scoring inside the HTTP request means spikes back up onto the
+  caller and you can only scale vertically. A queue turns a spike into a longer queue.
+- **Why partition by card?** Kafka only guarantees ordering within a partition, so keying by
+  card keeps each card's history ordered and pinned to one consumer.
+- **Why does the model fail open?** A fraud *check* shouldn't be able to take down the fraud
+  *system*. Degraded scoring beats no scoring.
+- **What's still missing?** Idempotent consumption on `eventId`, a dead-letter queue, and the
+  outbox pattern — all documented rather than glossed over.
 
-## What I'm learning
+## Project structure
 
-I'm using this as the hands-on companion to the system design I'm studying:
+```
+src/main/java/com/cdandeniya/fraud/
+├── controller/    REST endpoints (/score, /stats)
+├── service/       scoring orchestration
+├── engine/        rules engine + verdict logic
+├── rules/         individual checks (amount, country, velocity, model)
+├── features/      Redis-backed feature store
+├── messaging/     Kafka producer, consumer, simulator, messages
+├── ml/            client for the Python model service
+├── metrics/       Micrometer instrumentation
+├── model/         JPA entities
+└── repository/    Spring Data repositories
 
-- **Caching** → the Redis feature store (Stage 2) ✅
-- **Async / queues** → Kafka between producer and scorer (Stage 3) ✅
-- **Horizontal scaling & load balancing** → Kafka consumer groups + partitioning (Stage 4) ✅
-- **Service boundaries & resilience** → the model service + fail-open client (Stage 5) ✅
-- **Latency vs. throughput** → metrics + load testing, measure before optimizing (Stage 6) ✅
-- **Consistency vs. availability** → what I do when a piece goes down (Stage 7) ✅ — written up in [`DESIGN.md`](DESIGN.md)
+model/             Python model service (train.py, app.py, Dockerfile)
+loadtest/          standard-library load test
+ops/               Prometheus config
+docs/              architecture diagram
+```
 
-If you're a recruiter or hiring manager reading this: the short version is that it's a
-real-time, event-driven transaction scoring service with an ML model, that scales
-horizontally and is fully instrumented, and I can walk through every design decision in it.
-Thanks for stopping by.
+## How it was built
+
+Seven stages, each adding exactly one concept so I understood it before moving on:
+
+| Stage | Focus | Concept |
+|---|---|---|
+| 1 | REST endpoint, rules engine, Postgres | Single-server baseline |
+| 2 | Redis feature store | Caching computed features |
+| 3 | Kafka producer + consumer | Asynchronous processing |
+| 4 | Consumer group, partitioning | Horizontal scaling |
+| 5 | Python model service | Service boundaries, fail-open |
+| 6 | Metrics, dashboard, load test | Latency vs. throughput |
+| 7 | CI, design write-up | Consistency vs. availability |
 
 ## Notes
 
-- Fraud data is synthetic (a simulator) or a public Kaggle dataset — no real card data.
-- Personal learning project, not meant for production.
+All transaction data is synthetic — generated by the simulator or drawn from public datasets.
+No real cardholder data is involved. This is a personal learning project, not production software.
 
 ---
 
-*Built by Chanul Dandeniya · Computer Science @ Stony Brook University*
+<p align="center">
+  <b>Chanul Dandeniya</b> · Computer Science, Stony Brook University<br>
+  <a href="mailto:chanul.dandeniya@stonybrook.edu">chanul.dandeniya@stonybrook.edu</a>
+</p>
