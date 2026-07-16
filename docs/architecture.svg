@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 545" width="900" height="545" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#7a8794"/>
+    </marker>
+    <style>
+      .box  { rx: 8; ry: 8; stroke-width: 1.5; }
+      .t    { font-size: 13px; font-weight: 600; fill: #1f2328; }
+      .s    { font-size: 11px; fill: #57606a; }
+      .lbl  { font-size: 10.5px; fill: #6e7781; font-style: italic; }
+      .ln   { stroke: #7a8794; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="900" height="545" fill="#ffffff"/>
+  <text x="30" y="40" font-size="19" font-weight="700" fill="#1f2328">Fraud Detection Pipeline — Architecture</text>
+  <text x="30" y="62" font-size="12.5" fill="#57606a">Event-driven transaction scoring: Kafka ingest, rules + ML, horizontally scaled consumers</text>
+
+  <!-- producer -->
+  <rect class="box" x="30" y="240" width="150" height="70" fill="#e8f0fe" stroke="#4285f4"/>
+  <text class="t" x="105" y="268" text-anchor="middle">Producer</text>
+  <text class="s" x="105" y="286" text-anchor="middle">transaction simulator</text>
+
+  <!-- kafka -->
+  <rect class="box" x="225" y="215" width="140" height="120" fill="#fff4e5" stroke="#f59e0b"/>
+  <text class="t" x="295" y="243" text-anchor="middle">Kafka</text>
+  <text class="s" x="295" y="261" text-anchor="middle">topic: transactions</text>
+  <rect x="245" y="274" width="100" height="14" rx="3" fill="#fde3b8"/>
+  <rect x="245" y="292" width="100" height="14" rx="3" fill="#fde3b8"/>
+  <rect x="245" y="310" width="100" height="14" rx="3" fill="#fde3b8"/>
+  <text class="s" x="295" y="285" text-anchor="middle" font-size="9.5">partition 0</text>
+  <text class="s" x="295" y="303" text-anchor="middle" font-size="9.5">partition 1</text>
+  <text class="s" x="295" y="321" text-anchor="middle" font-size="9.5">partition 2</text>
+
+  <!-- consumer group -->
+  <rect x="408" y="130" width="194" height="290" rx="10" fill="#f6fbf7" stroke="#34a853" stroke-dasharray="5 4" stroke-width="1.4"/>
+  <text class="s" x="505" y="150" text-anchor="middle" font-weight="600" fill="#1e7e34">consumer group</text>
+  <rect class="box" x="428" y="162" width="154" height="56" fill="#e8f5e9" stroke="#34a853"/>
+  <text class="t" x="505" y="185" text-anchor="middle">Scorer #1</text>
+  <text class="s" x="505" y="202" text-anchor="middle">rules + ML</text>
+  <rect class="box" x="428" y="237" width="154" height="56" fill="#e8f5e9" stroke="#34a853"/>
+  <text class="t" x="505" y="260" text-anchor="middle">Scorer #2</text>
+  <text class="s" x="505" y="277" text-anchor="middle">rules + ML</text>
+  <rect class="box" x="428" y="312" width="154" height="56" fill="#e8f5e9" stroke="#34a853"/>
+  <text class="t" x="505" y="335" text-anchor="middle">Scorer #3</text>
+  <text class="s" x="505" y="352" text-anchor="middle">rules + ML</text>
+
+  <!-- right column services -->
+  <rect class="box" x="680" y="150" width="190" height="52" fill="#fdecea" stroke="#ea4335"/>
+  <text class="t" x="775" y="172" text-anchor="middle">Redis</text>
+  <text class="s" x="775" y="189" text-anchor="middle">velocity feature store</text>
+
+  <rect class="box" x="680" y="225" width="190" height="52" fill="#ede7f6" stroke="#7e57c2"/>
+  <text class="t" x="775" y="247" text-anchor="middle">Model service</text>
+  <text class="s" x="775" y="264" text-anchor="middle">Python · scikit-learn</text>
+
+  <rect class="box" x="680" y="300" width="190" height="52" fill="#e3f2fd" stroke="#1976d2"/>
+  <text class="t" x="775" y="322" text-anchor="middle">PostgreSQL</text>
+  <text class="s" x="775" y="339" text-anchor="middle">transactions + decisions</text>
+
+  <rect class="box" x="680" y="375" width="190" height="52" fill="#fff4e5" stroke="#f59e0b"/>
+  <text class="t" x="775" y="397" text-anchor="middle">Kafka</text>
+  <text class="s" x="775" y="414" text-anchor="middle">topic: fraud-alerts</text>
+
+  <!-- metrics row -->
+  <rect class="box" x="408" y="460" width="194" height="50" fill="#eceff1" stroke="#607d8b"/>
+  <text class="t" x="505" y="481" text-anchor="middle">Micrometer</text>
+  <text class="s" x="505" y="498" text-anchor="middle">/actuator/prometheus</text>
+
+  <rect class="box" x="680" y="460" width="190" height="50" fill="#eceff1" stroke="#607d8b"/>
+  <text class="t" x="775" y="481" text-anchor="middle">Prometheus</text>
+  <text class="s" x="775" y="498" text-anchor="middle">+ live dashboard</text>
+
+  <!-- arrows -->
+  <line class="ln" x1="180" y1="275" x2="220" y2="275"/>
+  <text class="lbl" x="200" y="267" text-anchor="middle">key=cardId</text>
+
+  <line class="ln" x1="365" y1="275" x2="403" y2="275"/>
+
+  <line class="ln" x1="602" y1="176" x2="675" y2="176"/>
+  <text class="lbl" x="638" y="169" text-anchor="middle">velocity</text>
+
+  <line class="ln" x1="602" y1="251" x2="675" y2="251"/>
+  <text class="lbl" x="638" y="244" text-anchor="middle">predict</text>
+
+  <line class="ln" x1="602" y1="326" x2="675" y2="326"/>
+  <text class="lbl" x="638" y="319" text-anchor="middle">persist</text>
+
+  <line class="ln" x1="602" y1="401" x2="675" y2="401"/>
+  <text class="lbl" x="638" y="394" text-anchor="middle">if flagged</text>
+
+  <line class="ln" x1="505" y1="420" x2="505" y2="455"/>
+  <line class="ln" x1="602" y1="485" x2="675" y2="485"/>
+</svg>
