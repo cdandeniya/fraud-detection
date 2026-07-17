@@ -184,6 +184,13 @@ delivery semantics, and the gaps I'd close next. A few highlights:
 - **What's still missing?** Idempotent consumption on `eventId`, a dead-letter queue, and the
   outbox pattern — all documented rather than glossed over.
 
+## Understanding the system
+
+[**STUDY_GUIDE.md**](STUDY_GUIDE.md) walks the full path of a single transaction through the
+code, then explains each concept behind it — Kafka partitions and consumer groups, the Redis
+sliding-window feature store, dependency injection, the ML metrics that matter on imbalanced
+data, and the trade-offs I chose.
+
 ## Project structure
 
 ```
