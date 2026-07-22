@@ -70,14 +70,16 @@ Concept: latency vs. throughput, measure before optimizing.
 real numbers from the load test.
 Concept: consistency vs. availability (CAP) — write up the trade-offs I chose.
 
-## Resume bullets (fill in numbers after Stage 6)
+## Resume bullets (measured)
 
-- Built a real-time fraud detection pipeline in Java/Spring Boot processing ~X,000 txns/sec
-  through Kafka, with a Redis feature store cutting feature-lookup latency to <X ms.
-- Designed for horizontal scale via Kafka consumer groups partitioned by card, N instances
-  in parallel with at-least-once processing.
-- Combined a rules engine with an XGBoost model catching X% of fraud at p95 latency of X ms,
-  reproducible via a single `docker compose up`.
+- Built a real-time fraud detection pipeline in **Java/Spring Boot** processing **~600
+  transactions/sec** on a single instance through **Kafka**, at **~15 ms mean scoring latency**
+  (107 ms p95 end-to-end), with a **Redis** feature store keeping velocity lookups off the DB hot path.
+- Scaled horizontally with **Kafka consumer groups** partitioned by card, with automatic
+  rebalancing on instance failure.
+- Combined a rules engine with a **scikit-learn** model behind a fail-open service boundary, and
+  instrumented the pipeline with **Micrometer/Prometheus** metrics and a live dashboard;
+  validated throughput and latency with a custom load-testing harness.
 
 ## Where the trade-offs are written up
 

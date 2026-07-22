@@ -37,10 +37,30 @@ about them. Every design decision in here is one I can explain — the reasoning
   <img src="docs/architecture.svg" alt="Architecture diagram" width="100%">
 </p>
 
-<!-- Once you've run it, drop a screenshot of the dashboard at docs/dashboard.png and uncomment:
 ## Live dashboard
-<p align="center"><img src="docs/dashboard.png" alt="Live dashboard" width="80%"></p>
--->
+
+<p align="center">
+  <img src="docs/dashboard.png" alt="Live dashboard" width="90%">
+</p>
+
+## Benchmarks
+
+Measured on a single instance (Apple Silicon laptop; Postgres, Redis, and Kafka in Docker)
+using the included load test with 5,000 requests at concurrency 50:
+
+| Metric | Value |
+|---|---|
+| Throughput | ~600 req/s (single instance) |
+| Mean scoring latency (server-side) | ~15 ms |
+| End-to-end latency (p50 / p95 / p99) | 74 / 107 / 603 ms |
+| Success rate | 100% (5,000 / 5,000) |
+
+Scoring latency is the server-side compute time reported by Micrometer; end-to-end latency
+includes the HTTP round trip and the load generator running on the same machine. Reproduce:
+
+```bash
+python3 loadtest/loadtest.py --requests 5000 --concurrency 50
+```
 
 ## What this project demonstrates
 
